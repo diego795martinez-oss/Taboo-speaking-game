@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Taboo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .card-container {
+            perspective: 1000px;
+        }
+
+        .game-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* The blurry cover layer */
+        .cover-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(15px);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: opacity 0.3s ease;
+        }
+
+        .cover-layer.hidden-cover {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .cover-icon {
+            font-size: 3rem;
+            color: #764ba2;
+            margin-bottom: 1rem;
+        }
+
+        .taboo-word {
+            position: relative;
+            padding-left: 1.5rem;
+        }
+        
+        .taboo-word::before {
+            content: "✕";
+            position: absolute;
+            left: 0;
+            color: #e53e3e;
+            font-weight: bold;
+        }
+
+        .timer-ring {
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        .timer-pulsing {
+            animation: pulse-red 1s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(1); color: #e53e3e; }
+            50% { transform: scale(1.1); color: #ff0000; }
+            100% { transform: scale(1); color: #e53e3e; }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+
+    <div class="w-full max-w-md">
+        
+        <!-- Header -->
+        <header class="text-center mb-6 text-white">
+            <h1 class="text-3xl font-extrabold tracking-wider">TABOO</h1>
+            <p class="text-blue-100 text-sm opacity-90">Describe the word. Don't say the forbidden!</p>
+        </header>
+
+        <!-- Main Card Area -->
+        <div class="card-container h-[500px] w-full relative mb-6">
+            
+            <div id="card" class="game-card h-full w-full flex flex-col border-4 border-white">
+                
+                <!-- The Blur Cover (Click to Reveal) -->
+                <div id="cover" class="cover-layer" onclick="revealCard()">
+                    <i class="fas fa-eye-slash cover-icon"></i>
+                    <h2 class="text-2xl font-bold text-gray-700">Tap to Reveal</h2>
+                    <p class="text-gray-500 mt-2 text-sm">Card #<span id="cardNumberDisplay">1</span></p>
+                </div>
+
+                <!-- Card Header (The Keyword) -->
+                <div class="bg-indigo-600 p-6 text-center rounded-t-lg">
+                    <h2 id="keyword" class="text-4xl font-extrabold text-white uppercase tracking-wide drop-shadow-md">BRAVE</h2>
+                </div>
+
+                <!-- Card Body (Taboo Words) -->
+                <div class="flex-1 p-8 flex flex-col justify-center items-center bg-white">
+                    <p class="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">Strictly Forbidden</p>
+                    <ul id="tabooList" class="space-y-3 text-xl font-semibold text-gray-700 w-full max-w-xs mx-auto">
+                        <!-- Words injected by JS -->
+                    </ul>
+                </div>
+
+                <!-- Card Footer (Visual Decoration) -->
+                <div class="h-4 bg-gradient-to-r from-pink-500 to-indigo-500"></div>
+            </div>
+        </div>
+
+        <!-- Controls Area -->
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-4 shadow-xl border border-white/20">
+            
+            <!-- Timer Section -->
+            <div class="flex items-center justify-between mb-4 bg-white/90 rounded-xl p-3 shadow-inner">
+                <div class="flex items-center gap-3">
+                    <div class="relative w-12 h-12 flex items-center justify-center">
+                        <svg class="transform -rotate-90 w-12 h-12">
+                            <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="4" fill="transparent" class="text-gray-200" />
+                            <circle id="timerProgress" cx="24" cy="24" r="20" stroke="currentColor" stroke-width="4" fill="transparent" class="text-indigo-600 timer-ring" stroke-dasharray="125.6" stroke-dashoffset="0" />
+                        </svg>
+                        <span id="timerDisplay" class="absolute font-bold text-indigo-900 text-sm">60</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-gray-500 uppercase">Time Left</span>
+                        <span id="timerStatus" class="text-sm font-semibold text-indigo-700">Ready</span>
+                    </div>
+                </div>
+                
+                <button id="timerBtn" onclick="toggleTimer()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-lg flex items-center gap-2">
+                    <i class="fas fa-play"></i> Start
+                </button>
+            </div>
+
+            <!-- Navigation -->
+            <div class="flex justify-between gap-4">
+                <button onclick="prevCard()" class="flex-1 bg-white text-indigo-900 py-3 rounded-xl font-bold hover:bg-gray-50 transition shadow-md border border-gray-200">
+                    <i class="fas fa-arrow-left mr-2"></i> Prev
+                </button>
+                <button onclick="hideCard()" class="px-4 bg-gray-200 text-gray-600 rounded-xl font-bold hover:bg-gray-300 transition" title="Hide Card">
+                    <i class="fas fa-eye-slash"></i>
+                </button>
+                <button onclick="nextCard()" class="flex-1 bg-white text-indigo-900 py-3 rounded-xl font-bold hover:bg-gray-50 transition shadow-md border border-gray-200">
+                    Next <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Data ---
+        const deck = [
+            { word: "Brave", taboo: ["Courage", "Fear", "Scared", "Hero", "Bold"] },
+            { word: "Nervous", taboo: ["Anxious", "Shaky", "Sweaty", "Jittery", "Test"] },
+            { word: "Clever", taboo: ["Smart", "Intelligent", "Brainy", "Genius", "Quick"] },
+            { word: "Kind", taboo: ["Nice", "Helpful", "Sweet", "Mean", "Generous"] },
+            { word: "Shy", taboo: ["Quiet", "Timid", "Introvert", "Talk", "Social"] },
+            { word: "Angry", taboo: ["Mad", "Furious", "Red", "Yell", "Temper"] },
+            { word: "Excited", taboo: ["Happy", "Eager", "Wait", "Energy", "Thrilled"] },
+            { word: "Selfish", taboo: ["Greedy", "Share", "Me", "Take", "Mine"] },
+            { word: "Curious", taboo: ["Question", "Wonder", "Ask", "Know", "Nosy"] },
+            { word: "Worried", taboo: ["Problem", "Stress", "Panic", "Future", "Trouble"] },
+            { word: "Confident", taboo: ["Believe", "Sure", "Self", "Proud", "Ability"] },
+            { word: "Friendly", taboo: ["Nice", "Amiable", "Outgoing", "Pal", "Welcome"] }
+        ];
+
+        // --- State ---
+        let currentIndex = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let isTimerRunning = false;
+        const FULL_DASH_ARRAY = 125.6; // Circumference of circle r=20
+
+        // --- Elements ---
+        const keywordEl = document.getElementById('keyword');
+        const tabooListEl = document.getElementById('tabooList');
+        const coverEl = document.getElementById('cover');
+        const cardNumEl = document.getElementById('cardNumberDisplay');
+        const timerDisplayEl = document.getElementById('timerDisplay');
+        const timerBtnEl = document.getElementById('timerBtn');
+        const timerProgressEl = document.getElementById('timerProgress');
+        const timerStatusEl = document.getElementById('timerStatus');
+
+        // --- Initialization ---
+        function loadCard(index) {
+            const data = deck[index];
+            keywordEl.textContent = data.word;
+            cardNumEl.textContent = index + 1;
+            
+            // Clear and rebuild list
+            tabooListEl.innerHTML = '';
+            data.taboo.forEach(word => {
+                const li = document.createElement('li');
+                li.className = 'taboo-word';
+                li.textContent = word;
+                tabooListEl.appendChild(li);
+            });
+
+            // Ensure card is covered when loading a new one
+            coverEl.classList.remove('hidden-cover');
+            
+            // Reset timer automatically on card change
+            resetTimer();
+        }
+
+        function revealCard() {
+            coverEl.classList.add('hidden-cover');
+        }
+
+        function hideCard() {
+            coverEl.classList.remove('hidden-cover');
+        }
+
+        function nextCard() {
+            if (currentIndex < deck.length - 1) {
+                currentIndex++;
+                loadCard(currentIndex);
+            } else {
+                // Loop back to start? or Alert end? Let's loop for flow.
+                currentIndex = 0;
+                loadCard(currentIndex);
+            }
+        }
+
+        function prevCard() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                loadCard(currentIndex);
+            }
+        }
+
+        // --- Timer Logic ---
+        function toggleTimer() {
+            if (isTimerRunning) {
+                pauseTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            if (timeLeft <= 0) resetTimer();
+            
+            isTimerRunning = true;
+            timerBtnEl.innerHTML = '<i class="fas fa-pause"></i> Pause';
+            timerBtnEl.classList.replace('bg-indigo-600', 'bg-yellow-500');
+            timerBtnEl.classList.replace('hover:bg-indigo-700', 'hover:bg-yellow-600');
+            timerStatusEl.textContent = "Go!";
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerUI();
+
+                if (timeLeft <= 0) {
+                    timeUp();
+                }
+            }, 1000);
+        }
+
+        function pauseTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            timerBtnEl.innerHTML = '<i class="fas fa-play"></i> Resume';
+            timerBtnEl.classList.replace('bg-yellow-500', 'bg-indigo-600');
+            timerBtnEl.classList.replace('hover:bg-yellow-600', 'hover:bg-indigo-700');
+            timerStatusEl.textContent = "Paused";
+        }
+
+        function resetTimer() {
+            pauseTimer();
+            timeLeft = 60;
+            updateTimerUI();
+            timerBtnEl.innerHTML = '<i class="fas fa-play"></i> Start';
+            timerStatusEl.textContent = "Ready";
+            timerDisplayEl.classList.remove('timer-pulsing', 'text-red-600');
+            timerProgressEl.classList.remove('text-red-500');
+            timerProgressEl.classList.add('text-indigo-600');
+        }
+
+        function timeUp() {
+            pauseTimer();
+            timeLeft = 0;
+            updateTimerUI();
+            timerStatusEl.textContent = "Time's Up!";
+            timerBtnEl.innerHTML = '<i class="fas fa-redo"></i> Reset';
+            
+            // Visual Alarm
+            timerDisplayEl.classList.add('timer-pulsing', 'text-red-600');
+            timerProgressEl.classList.replace('text-indigo-600', 'text-red-500');
+        }
+
+        function updateTimerUI() {
+            timerDisplayEl.textContent = timeLeft;
+            
+            // Update Circle Ring
+            const rawFraction = timeLeft / 60;
+            // Ensure strict fraction 0 to 1
+            const fraction = rawFraction - (1 / 60) * (1 - rawFraction);
+            const offset = FULL_DASH_ARRAY - (rawFraction * FULL_DASH_ARRAY);
+            timerProgressEl.style.strokeDashoffset = offset;
+        }
+
+        // --- Boot ---
+        loadCard(currentIndex);
+
+    </script>
+</body>
+</html>
