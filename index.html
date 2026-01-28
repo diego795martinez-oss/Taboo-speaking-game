@@ -83,11 +83,23 @@
             50% { transform: scale(1.1); color: #ff0000; }
             100% { transform: scale(1); color: #e53e3e; }
         }
+
+        /* Custom scrollbar for recordings */
+        .recordings-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .recordings-scroll::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+        }
+        .recordings-scroll::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+        }
     </style>
 </head>
-<body class="flex items-center justify-center p-4 relative overflow-hidden">
+<body class="flex flex-col items-center justify-center p-4 relative overflow-y-auto min-h-screen">
 
-    <div class="w-full max-w-md">
+    <div class="w-full max-w-md pb-24"> <!-- Added padding bottom for list -->
         
         <!-- Header -->
         <header class="text-center mb-6 text-white">
@@ -108,8 +120,12 @@
                 </div>
 
                 <!-- Card Header (The Keyword) -->
-                <div class="bg-indigo-600 p-6 text-center rounded-t-lg">
+                <div class="bg-indigo-600 p-6 text-center rounded-t-lg relative">
                     <h2 id="keyword" class="text-4xl font-extrabold text-white uppercase tracking-wide drop-shadow-md">BRAVE</h2>
+                    <!-- Recording Indicator -->
+                    <div id="recIndicator" class="absolute top-4 right-4 text-red-400 animate-pulse hidden" title="Recording in progress">
+                        <i class="fas fa-circle text-xs"></i> <span class="text-xs font-bold">REC</span>
+                    </div>
                 </div>
 
                 <!-- Card Body (Taboo Words) -->
@@ -126,7 +142,7 @@
         </div>
 
         <!-- Controls Area -->
-        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-4 shadow-xl border border-white/20">
+        <div class="bg-white/10 backdrop-blur-lg rounded-2xl p-4 shadow-xl border border-white/20 mb-6">
             
             <!-- Timer Section -->
             <div class="flex items-center justify-between mb-4 bg-white/90 rounded-xl p-3 shadow-inner">
@@ -144,8 +160,8 @@
                     </div>
                 </div>
                 
-                <button id="timerBtn" onclick="toggleTimer()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-lg flex items-center gap-2">
-                    <i class="fas fa-play"></i> Start
+                <button id="timerBtn" onclick="handleTimerClick()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold transition-colors shadow-lg flex items-center gap-2">
+                    <i class="fas fa-microphone"></i> Start & Rec
                 </button>
             </div>
 
@@ -160,6 +176,14 @@
                 <button onclick="nextCard()" class="flex-1 bg-white text-indigo-900 py-3 rounded-xl font-bold hover:bg-gray-50 transition shadow-md border border-gray-200">
                     Next <i class="fas fa-arrow-right ml-2"></i>
                 </button>
+            </div>
+        </div>
+
+        <!-- Recordings List -->
+        <div id="recordingsContainer" class="hidden w-full">
+            <h3 class="text-white font-bold mb-2 ml-1 text-sm uppercase opacity-80">Session Recordings</h3>
+            <div id="recordingsList" class="bg-white/10 backdrop-blur-md rounded-xl p-2 space-y-2 max-h-40 overflow-y-auto recordings-scroll border border-white/10">
+                <!-- Recordings go here -->
             </div>
         </div>
 
@@ -209,7 +233,13 @@
         let timeLeft = 60;
         let timerInterval = null;
         let isTimerRunning = false;
-        const FULL_DASH_ARRAY = 125.6; // Circumference of circle r=20
+        const FULL_DASH_ARRAY = 125.6;
+        
+        // Recording State
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let recordingWord = ""; // Track which word is being recorded
 
         // --- Elements ---
         const keywordEl = document.getElementById('keyword');
@@ -220,9 +250,17 @@
         const timerBtnEl = document.getElementById('timerBtn');
         const timerProgressEl = document.getElementById('timerProgress');
         const timerStatusEl = document.getElementById('timerStatus');
+        const recIndicatorEl = document.getElementById('recIndicator');
+        const recordingsListEl = document.getElementById('recordingsList');
+        const recordingsContainerEl = document.getElementById('recordingsContainer');
 
         // --- Initialization ---
         function loadCard(index) {
+            // If recording is active when switching cards, stop and save it
+            if (isRecording || (mediaRecorder && mediaRecorder.state !== 'inactive')) {
+                finishRecording();
+            }
+
             const data = deck[index];
             keywordEl.textContent = data.word;
             cardNumEl.textContent = index + 1;
@@ -236,10 +274,9 @@
                 tabooListEl.appendChild(li);
             });
 
-            // Ensure card is covered when loading a new one
+            // Ensure card is covered
             coverEl.classList.remove('hidden-cover');
             
-            // Reset timer automatically on card change
             resetTimer();
         }
 
@@ -256,7 +293,6 @@
                 currentIndex++;
                 loadCard(currentIndex);
             } else {
-                // Loop back to start? or Alert end? Let's loop for flow.
                 currentIndex = 0;
                 loadCard(currentIndex);
             }
@@ -269,7 +305,97 @@
             }
         }
 
+        // --- Audio Recording Logic ---
+
+        async function initAudio() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert("Your browser does not support audio recording.");
+                return false;
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (audioChunks.length === 0) return; // Don't save empty
+                    
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    addRecordingToUI(recordingWord, audioUrl);
+                    
+                    // Reset chunks
+                    audioChunks = [];
+                };
+                return true;
+            } catch (err) {
+                console.error("Error accessing microphone:", err);
+                alert("Microphone access is required to record.");
+                return false;
+            }
+        }
+
+        function startRecording() {
+            if (!mediaRecorder) return;
+            
+            if (mediaRecorder.state === 'inactive') {
+                audioChunks = [];
+                recordingWord = keywordEl.textContent;
+                mediaRecorder.start();
+                isRecording = true;
+                recIndicatorEl.classList.remove('hidden');
+            } else if (mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+                isRecording = true;
+                recIndicatorEl.classList.remove('hidden');
+            }
+        }
+
+        function pauseRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+                isRecording = false;
+                recIndicatorEl.classList.add('hidden');
+            }
+        }
+
+        function finishRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                isRecording = false;
+                recIndicatorEl.classList.add('hidden');
+            }
+        }
+
+        function addRecordingToUI(word, url) {
+            recordingsContainerEl.classList.remove('hidden');
+            
+            const div = document.createElement('div');
+            div.className = "flex items-center justify-between bg-white rounded-lg p-2 shadow-sm";
+            div.innerHTML = `
+                <div class="flex flex-col overflow-hidden mr-2">
+                    <span class="font-bold text-gray-700 text-sm truncate">${word}</span>
+                    <span class="text-xs text-gray-400">Audio Clip</span>
+                </div>
+                <audio controls src="${url}" class="h-8 w-48"></audio>
+            `;
+            recordingsListEl.prepend(div);
+        }
+
+
         // --- Timer Logic ---
+
+        async function handleTimerClick() {
+            if (!mediaRecorder) {
+                const success = await initAudio();
+                if (!success) return; // Don't start timer if audio fails/denied
+            }
+            toggleTimer();
+        }
+
         function toggleTimer() {
             if (isTimerRunning) {
                 pauseTimer();
@@ -285,8 +411,11 @@
             timerBtnEl.innerHTML = '<i class="fas fa-pause"></i> Pause';
             timerBtnEl.classList.replace('bg-indigo-600', 'bg-yellow-500');
             timerBtnEl.classList.replace('hover:bg-indigo-700', 'hover:bg-yellow-600');
-            timerStatusEl.textContent = "Go!";
+            timerStatusEl.textContent = "Recording...";
             
+            // Start/Resume Audio
+            startRecording();
+
             timerInterval = setInterval(() => {
                 timeLeft--;
                 updateTimerUI();
@@ -300,17 +429,27 @@
         function pauseTimer() {
             isTimerRunning = false;
             clearInterval(timerInterval);
-            timerBtnEl.innerHTML = '<i class="fas fa-play"></i> Resume';
+            timerBtnEl.innerHTML = '<i class="fas fa-microphone"></i> Resume';
             timerBtnEl.classList.replace('bg-yellow-500', 'bg-indigo-600');
             timerBtnEl.classList.replace('hover:bg-yellow-600', 'hover:bg-indigo-700');
             timerStatusEl.textContent = "Paused";
+
+            // Pause Audio
+            pauseRecording();
         }
 
         function resetTimer() {
+            // Stop logic
+            finishRecording();
             pauseTimer();
+
             timeLeft = 60;
             updateTimerUI();
-            timerBtnEl.innerHTML = '<i class="fas fa-play"></i> Start';
+            
+            timerBtnEl.innerHTML = '<i class="fas fa-microphone"></i> Start & Rec';
+            timerBtnEl.classList.replace('bg-yellow-500', 'bg-indigo-600'); // Ensure color reset
+            timerBtnEl.classList.replace('hover:bg-yellow-600', 'hover:bg-indigo-700');
+            
             timerStatusEl.textContent = "Ready";
             timerDisplayEl.classList.remove('timer-pulsing', 'text-red-600');
             timerProgressEl.classList.remove('text-red-500');
@@ -318,7 +457,9 @@
         }
 
         function timeUp() {
-            pauseTimer();
+            pauseTimer(); // Clears interval
+            finishRecording(); // Saves audio
+
             timeLeft = 0;
             updateTimerUI();
             timerStatusEl.textContent = "Time's Up!";
@@ -334,7 +475,6 @@
             
             // Update Circle Ring
             const rawFraction = timeLeft / 60;
-            // Ensure strict fraction 0 to 1
             const fraction = rawFraction - (1 / 60) * (1 - rawFraction);
             const offset = FULL_DASH_ARRAY - (rawFraction * FULL_DASH_ARRAY);
             timerProgressEl.style.strokeDashoffset = offset;
@@ -351,6 +491,7 @@
         }
 
         // --- Boot ---
+        // We do not call initAudio() here. We wait for user interaction (click).
         loadCard(currentIndex);
 
     </script>
