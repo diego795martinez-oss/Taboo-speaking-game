@@ -85,7 +85,7 @@
         }
     </style>
 </head>
-<body class="flex items-center justify-center p-4">
+<body class="flex items-center justify-center p-4 relative overflow-hidden">
 
     <div class="w-full max-w-md">
         
@@ -163,6 +163,28 @@
             </div>
         </div>
 
+    </div>
+
+    <!-- Floating Clue Bubble -->
+    <div class="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        <!-- The Popup Bubble -->
+        <div id="cluePopup" class="mb-4 bg-white rounded-2xl shadow-2xl p-5 w-64 transform transition-all duration-300 origin-bottom-right scale-0 opacity-0 border border-indigo-100">
+            <h3 class="text-indigo-800 font-bold mb-2 flex items-center gap-2">
+                <i class="fas fa-lightbulb text-yellow-400"></i> Need help?
+            </h3>
+            <ul class="text-sm text-gray-600 space-y-2 list-disc pl-4">
+                <li>What is the <b>opposite</b>?</li>
+                <li><b>When</b> do you feel this?</li>
+                <li>Is it <b>good</b> or <b>bad</b>?</li>
+                <li>Who is a person like this?</li>
+                <li>"It's like when you..."</li>
+            </ul>
+        </div>
+
+        <!-- The Floating Button -->
+        <button onclick="toggleClues()" class="bg-yellow-400 hover:bg-yellow-500 text-indigo-900 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl transition-transform hover:scale-110 focus:outline-none border-4 border-white">
+            <i class="fas fa-question"></i>
+        </button>
     </div>
 
     <script>
@@ -316,6 +338,16 @@
             const fraction = rawFraction - (1 / 60) * (1 - rawFraction);
             const offset = FULL_DASH_ARRAY - (rawFraction * FULL_DASH_ARRAY);
             timerProgressEl.style.strokeDashoffset = offset;
+        }
+
+        // --- Clue Logic ---
+        function toggleClues() {
+            const popup = document.getElementById('cluePopup');
+            if (popup.classList.contains('scale-0')) {
+                popup.classList.remove('scale-0', 'opacity-0');
+            } else {
+                popup.classList.add('scale-0', 'opacity-0');
+            }
         }
 
         // --- Boot ---
